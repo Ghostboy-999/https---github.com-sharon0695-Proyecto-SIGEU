@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Evaluar Eventos</title>
+  <link rel="stylesheet" href="evaluar-eventos.css">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+</head>
+<body>
+
+  <!-- ======= HEADER ======= -->
+  <header>
+    <nav class="navbar">
+      <div class="nav-left">
+        <a routerLink="/homeS">Inicio</a>
+        <a routerLink="/evaluar-eventos" class="active">Evaluar eventos</a>
+      </div>
+
+      <div class="nav-icons">
+        <app-notificaciones></app-notificaciones>
+        <a routerLink="/perfil">
+          <span class="material-symbols-outlined profile-pic" id="perfil">account_circle</span>
+        </a>
+      </div>
+    </nav>
+  </header>
+
+  <!-- ======= MODAL DE MENSAJES ======= -->
+  <div class="modal mensaje-modal" [style.display]="showMessageModal ? 'flex' : 'none'">
+    <div class="modal-content" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3 [style.color]="messageType === 'success' ? '#4caf50' : '#f44336'">{{ messageTitle }}</h3>
+        <span class="close" (click)="closeMessageModal()">&times;</span>
+      </div>
+      <div style="padding: 20px 0;">
+        <p [style.color]="messageType === 'success' ? '#2e7d32' : '#c62828'">{{ messageText }}</p>
+      </div>
+      <div style="text-align: right;">
+        <button 
+          class="save-btn" 
+          (click)="closeMessageModal()"
+          [style.background-color]="messageType === 'success' ? '#4caf50' : '#f44336'">
+          Cerrar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======= CONTENIDO PRINCIPAL ======= -->
+  <main class="main-container">
+    <section class="event-container">
+      <div class="event-header">
+        <h2>Revisión de eventos</h2>
+      </div>
+
+      <table class="event-table">
+        <thead>
+          <tr>
+            <th>Código</th>
+            <th>Nombre</th>
+            <th>Descripción</th>
+            <th>Tipo</th>
+            <th>Fecha</th>
+            <th>Hora inicio</th>
+            <th>Hora fin</th>
+            <th>Estado</th>
+            <th>Organizador</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          <!-- Mostrar mensaje si no hay eventos -->
+          <tr *ngIf="!eventosFiltrados().length">
+            <td colspan="10" class="event-empty">No hay eventos pendientes por evaluar</td>
+          </tr>
+
+          <!-- Iterar sobre eventos -->
+          <tr *ngFor="let evento of eventosFiltrados() | slice:(paginaActual - 1) * elementosPorPagina : paginaActual * elementosPorPagina">
+            <td>{{ evento.codigo }}</td>
+            <td>{{ evento.nombre }}</td>
+            <td>{{ evento.descripcion }}</td>
+            <td>{{ evento.tipo || '-' }}</td>
+            <td>{{ evento.fecha ? (evento.fecha | date:'shortDate') : '-' }}</td>
+            <td>{{ evento.hora_inicio || '-' }}</td>
+            <td>{{ evento.hora_fin || '-' }}</td>
+            <td>{{ evento.estado || '-' }}</td>
+            <td>{{ evento.organizador }}</td>
+            <td>
+              <button class="small-btn" (click)="verDetalles(evento)">👁 Ver más</button>
+              <button class="small-btn approve" (click)="abrirModalEvaluacion(evento)">📝 Evaluar</button>
+            </td>
+          </tr>       
+        </tbody>        
+      </table>
+      <div class="pagination">
+        <button (click)="paginaAnterior()" [disabled]="paginaActual === 1">Anterior</button>
+        <span>Página {{paginaActual}} de {{totalPaginas}}</span>
+        <button (click)="paginaSiguiente()" [disabled]="paginaActual === totalPaginas">Siguiente</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- ======= MODAL: VER MÁS ======= -->
+  <div class="modal" [style.display]="modalVerMasVisible ? 'flex' : 'none'">
+    <div class="modal-content modal-detalle">
+      <div class="modal-header">
+        <h3>Detalles del evento</h3>
+        <span class="close" (click)="cerrarModalVerMas()">&times;</span>
+      </div>
+
+      <div class="modal-body" *ngIf="eventoSeleccionado">
+        <p><strong>Código:</strong> {{ eventoSeleccionado.codigo }}</p>
+        <p><strong>Nombre:</strong> {{ eventoSeleccionado.nombre }}</p>
+        <p><strong>Descripción:</strong> {{ eventoSeleccionado.descripcion }}</p>
+        <p><strong>Fecha:</strong> {{ eventoSeleccionado.fecha ? (eventoSeleccionado.fecha | date:'longDate') : '-' }}</p>
+        <p><strong>Organizador:</strong> {{ eventoSeleccionado.organizador }}</p>
+
+        <div *ngIf="detallesEvento">
+          <h4>Organizaciones colaboradoras</h4>
+            <ul>
+              <li *ngFor="let org of detallesEvento.organizaciones">
+                <strong>{{org.nombre}}</strong> (NIT: {{org.nit}})
+                <div *ngIf="org.certificado_participacion" class="file-actions">
+                  <button class="small-btn-file">
+                    <a 
+                    [href]="eventosService.getFileViewUrl('organizaciones', org.certificado_participacion)" target="_blank"> 👁 Ver certificado</a>
+                  </button>
+                  <button class="small-btn-file">
+                    <a 
+                      [href]="eventosService.getFileDownloadUrl('organizaciones', org.certificado_participacion)" 
+                      download>⬇ Descargar</a>
+                  </button>
+                </div>
+              </li>
+            </ul>
+
+            <h4>Responsables</h4>
+            <ul>
+              <li *ngFor="let resp of detallesEvento.responsables">
+                <strong>{{resp.nombreUsuario || resp.id_usuario}}</strong>
+                <div *ngIf="resp.documentoAval" class="file-actions">
+                  <button class="small-btn-file">
+                    <a 
+                      [href]="eventosService.getFileViewUrl('responsables', resp.documentoAval)" 
+                      target="_blank">👁 Ver aval</a>
+                  </button>
+                  <button class="small-btn-file">
+                    <a 
+                      [href]="eventosService.getFileDownloadUrl('responsables', resp.documentoAval)" 
+                      download>⬇ Descargar</a>
+                  </button>
+                </div>
+              </li>
+            </ul>
+
+          <h4>Reservaciones</h4>
+          <ul>
+            <li *ngFor="let res of detallesEvento.reservaciones">
+              <strong>{{res.nombreEspacio || res.codigo_espacio}}</strong> - {{res.hora_inicio}} a {{res.hora_fin}}
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="small-btn" (click)="cerrarModalVerMas()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======= MODAL: EVALUAR EVENTO ======= -->
+  <div class="modal" [style.display]="modalEvaluarVisible ? 'flex' : 'none'">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Evaluar evento</h3>
+        <span class="close" (click)="cerrarModalEvaluacion()">&times;</span>
+      </div>
+
+      <div class="modal-body">
+        <p><strong>Código:</strong> {{ eventoSeleccionado?.codigo }}</p>
+        <p><strong>Nombre:</strong> {{ eventoSeleccionado?.nombre }}</p>
+
+        <div class="form-group">
+          <label for="decision">Decisión *</label>
+          <select id="decision" [(ngModel)]="decision" name="decision" class="select-decision">
+            <option value="">-- Seleccione una opción --</option>
+            <option value="aprobado">Aprobar evento</option>
+            <option value="rechazado">Rechazar evento</option>
+          </select>
+        </div>
+        
+        <ng-container [ngSwitch]="decision">
+          <div *ngSwitchCase="'rechazado'">
+          <div class="form-group">          
+          <label for="observaciones">
+            Observaciones {{ decision === 'rechazado' ? '*' : '(opcional)' }}
+          </label>
+          <textarea 
+            id="observaciones"
+            [(ngModel)]="observaciones" 
+            name="observaciones"
+            rows="5" 
+            class="textarea-observaciones"
+            placeholder="Ingrese observaciones sobre la decisión"
+            [required]="decision === 'rechazado'"></textarea>
+            </div>
+            </div>
+                
+        <div *ngSwitchCase="'aprobado'">
+        <div class="form-group">
+          <label for="actaComite">Acta del Comité (opcional)</label>
+          <input 
+            type="file" 
+            id="actaComite"
+            accept="application/pdf" 
+            (change)="onActaChange($event)"
+            class="input-file">
+          <small>Solo archivos PDF</small>
+        </div>
+        </div>
+        </ng-container>  
+      </div>
+      
+      <div class="modal-footer">
+        <button class="small-btn cancel" (click)="cerrarModalEvaluacion()">Cancelar</button>
+        <button class="save-btn" (click)="confirmarEvaluacion()">Confirmar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======= MODAL: MENSAJE ======= -->
+  <div class="modal" [style.display]="mensajeVisible ? 'flex' : 'none'">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Mensaje</h3>
+        <span class="close" (click)="cerrarMensaje()">&times;</span>
+      </div>
+      <div class="modal-body">
+        <p>{{ mensajeTexto }}</p>
+      </div>
+      <div class="modal-footer">
+        <button class="small-btn" (click)="cerrarMensaje()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
